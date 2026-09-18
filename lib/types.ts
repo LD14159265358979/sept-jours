@@ -43,6 +43,22 @@ export type Appointment = {
   updatedAt: string;
 };
 
+export type CalendarRecurrence = 'none' | 'weekly';
+
+export type CalendarEvent = {
+  id: string;
+  userId?: string;
+  title: string;
+  startDate: string;
+  time: string;
+  recurrence: CalendarRecurrence;
+  recurrenceEndDate: string | null;
+  reminderText: string | null;
+  excludedDates: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Day = {
   date: string;
   label: string;
