@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import type { UpcomingEvent } from '@/lib/types';
+import { EVENT_TITLE_PLACEHOLDER } from '@/lib/event-form';
 
 function daysBetween(from: string, to: string) {
   const parts = (value: string) => value.split('-').map(Number);
@@ -37,7 +38,7 @@ export function EventCountdown({ today, events, onAdd, onDelete }: { today: stri
         <DialogContent className="countdown-dialog">
           <DialogHeader><DialogTitle>Nouvel événement</DialogTitle><DialogDescription>Ajoutez une date que vous avez hâte de voir arriver. Trois compteurs maximum.</DialogDescription></DialogHeader>
           <form id="countdown-form" onSubmit={submit} className="countdown-form">
-            <label htmlFor="event-name">Nom de l’événement</label><Input id="event-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Date du terme" />
+            <label htmlFor="event-name">Titre de l’événement</label><Input id="event-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={EVENT_TITLE_PLACEHOLDER} />
             <label htmlFor="event-date">Date</label><Input id="event-date" type="date" min={today} value={date} onChange={(event) => setDate(event.target.value)} />
           </form>
           <DialogFooter><DialogClose render={<Button variant="ghost" />}>Annuler</DialogClose><Button form="countdown-form" type="submit">Ajouter</Button></DialogFooter>

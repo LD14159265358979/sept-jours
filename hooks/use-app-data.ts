@@ -3,6 +3,7 @@ import { demoTasks } from '@/lib/demo-data';
 import { canAddAppointment } from '@/lib/appointments';
 import { expiredTaskIds } from '@/lib/date-utils';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { appointmentWithChanges, taskWithTitle } from '@/lib/record-updates';
 import type { Appointment, DailyNote, Priority, Task, UpcomingEvent } from '@/lib/types';
 import { deleteAppointment, deleteEvent, deleteNote, deleteTasks, fetchUserData, insertAppointment, insertEvent, insertTask, subscribeToUserData, updateAppointment as persistAppointment, updateTask as persistTask, updateTaskPositions, upsertNote } from '@/services/data-service';
 
@@ -97,7 +98,7 @@ export function useAppData(userId?: string) {
 
   async function updateTask(id: string, patch: Partial<Task>) {
     const before = tasks; const fullPatch = { ...patch, updatedAt: new Date().toISOString() };
-    setTasks((current) => current.map((task) => task.id === id ? { ...task, ...fullPatch } : task));
+    setTasks((current) => current.map((task) => task.id === id ? (patch.title !== undefined ? taskWithTitle({ ...task, ...fullPatch }, patch.title, fullPatch.updatedAt) : { ...task, ...fullPatch }) : task));
     await runRemote(() => persistTask(id, userId!, patch), () => setTasks(before));
   }
 
@@ -161,10 +162,17 @@ export function useAppData(userId?: string) {
     await runRemote(() => persistAppointment(id, userId!, patch), () => setAppointments(before));
   }
 
+  async function updateAppointment(id: string, time: string, description: string) {
+    const before = appointments;
+    const updatedAt = new Date().toISOString();
+    setAppointments((current) => current.map((appointment) => appointment.id === id ? appointmentWithChanges(appointment, { time, description }, updatedAt) : appointment));
+    await runRemote(() => persistAppointment(id, userId!, { time, description }), () => setAppointments(before));
+  }
+
   async function removeAppointment(id: string) {
     const before = appointments; setAppointments((current) => current.filter((appointment) => appointment.id !== id));
     await runRemote(() => deleteAppointment(id, userId!), () => setAppointments(before));
   }
 
-  return { tasks, notes, events, appointments, loading, syncState, error, reload, addTask, updateTask, toggleTask, removeTask, reorderTasks, changeNote, removeNote, addEvent, removeEvent, addAppointment, toggleAppointment, removeAppointment };
+  return { tasks, notes, events, appointments, loading, syncState, error, reload, addTask, updateTask, toggleTask, removeTask, reorderTasks, changeNote, removeNote, addEvent, removeEvent, addAppointment, updateAppointment, toggleAppointment, removeAppointment };
 }

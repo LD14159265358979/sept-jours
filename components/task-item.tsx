@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CSS } from '@dnd-kit/utilities';
 import { useSortable } from '@dnd-kit/sortable';
 import { CalendarPlus, Check, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
@@ -17,6 +17,7 @@ type Props = { task: Task; onToggle: (id: string) => void; onPriorityChange: (id
 export function TaskItem({ task, onToggle, onPriorityChange, onRename, onDelete, onMoveTomorrow }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
+  const editInputRef = useRef<HTMLInputElement>(null);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, data: { type: 'task', scheduledDate: task.scheduledDate } });
 
   function saveTitle() {
@@ -24,11 +25,17 @@ export function TaskItem({ task, onToggle, onPriorityChange, onRename, onDelete,
     setIsEditing(false);
   }
 
+  useEffect(() => {
+    if (!isEditing) return;
+    editInputRef.current?.focus();
+    editInputRef.current?.select();
+  }, [isEditing]);
+
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`task-item priority-${task.priority} ${task.isCompleted ? 'is-completed' : ''} ${isDragging ? 'is-dragging' : ''}`} {...attributes} {...listeners}>
       <span className="task-check" onPointerDown={(event) => event.stopPropagation()}><Checkbox checked={task.isCompleted} onCheckedChange={() => onToggle(task.id)} aria-label={`${task.isCompleted ? 'Rouvrir' : 'Terminer'} : ${task.title}`} /></span>
       <div className="task-copy">
-        {isEditing ? <Input value={title} onChange={(event) => setTitle(event.target.value)} onBlur={saveTitle} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Enter') saveTitle(); if (event.key === 'Escape') { setTitle(task.title); setIsEditing(false); } }} /> : <span>{task.title}</span>}
+        {isEditing ? <Input ref={editInputRef} value={title} onChange={(event) => setTitle(event.target.value)} onBlur={saveTitle} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter') saveTitle(); if (event.key === 'Escape') { setTitle(task.title); setIsEditing(false); } }} /> : <span>{task.title}</span>}
         <small><i /> {priorityLabels[task.priority]}</small>
       </div>
       <DropdownMenu>

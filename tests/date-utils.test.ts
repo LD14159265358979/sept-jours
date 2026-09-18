@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addCalendarDays, differenceInCalendarDays, expiredTaskIds, getSevenDayWindow, isTaskExpired, mondayOfWeek } from '@/lib/date-utils';
+import { addCalendarDays, differenceInCalendarDays, expiredTaskIds, getSevenDayWindow, isTaskExpired, mondayOfWeek, shiftSevenDayWindow } from '@/lib/date-utils';
 import type { Task } from '@/lib/types';
 import { cleanupPlan } from '@/lib/cleanup';
 
@@ -15,12 +15,24 @@ describe('fenêtre de sept jours', () => {
     expect(days[6].date).toBe('2026-09-13');
   });
 
+  it('navigue vers les sept jours précédents puis revient à aujourd’hui', () => {
+    const today = '2026-09-11';
+    const previousStart = shiftSevenDayWindow(today, today, -1);
+    expect(getSevenDayWindow(previousStart, today).map((day) => day.date)).toEqual(['2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10']);
+    expect(shiftSevenDayWindow(previousStart, today, 1)).toBe(today);
+  });
+
+  it('limite la navigation vers la droite à la période actuelle', () => {
+    expect(shiftSevenDayWindow('2026-09-11', '2026-09-11', 1)).toBe('2026-09-11');
+  });
+
   it('traverse correctement un changement de mois', () => {
     expect(getSevenDayWindow('2026-01-29').map((day) => day.date)).toEqual(['2026-01-29', '2026-01-30', '2026-01-31', '2026-02-01', '2026-02-02', '2026-02-03', '2026-02-04']);
   });
 
   it('traverse correctement le 31 décembre', () => {
     expect(addCalendarDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(getSevenDayWindow('2026-12-29', '2027-01-02')[6].date).toBe('2027-01-04');
   });
 
   it('gère les années bissextiles', () => {

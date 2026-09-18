@@ -8,12 +8,13 @@ import { DayColumn } from '@/components/day-column';
 import { DayTab } from '@/components/day-tab';
 import { EventCountdown } from '@/components/event-countdown';
 import { PastNotes } from '@/components/past-notes';
-import { addCalendarDays, formatWeekRange, getSevenDayWindow, localDateKey, mondayOfWeek } from '@/lib/date-utils';
+import { addCalendarDays, getSevenDayWindow, localDateKey, mondayOfWeek, shiftSevenDayWindow } from '@/lib/date-utils';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import type { Priority, Task } from '@/lib/types';
 import { getWeeklyVerse } from '@/lib/weekly-verses';
 import { useAppData } from '@/hooks/use-app-data';
 import { useSession } from '@/hooks/use-session';
+import { WeekNavigation } from '@/components/week-navigation';
 
 const syncLabels = {
   synced: { text: 'Synchronisé', icon: Cloud },
@@ -26,10 +27,11 @@ export default function App() {
   const { session, loading: sessionLoading } = useSession();
   const data = useAppData(session?.user.id);
   const today = localDateKey();
-  const days = useMemo(() => getSevenDayWindow(today), [today]);
+  const [periodStart, setPeriodStart] = useState(today);
+  const days = useMemo(() => getSevenDayWindow(periodStart, today), [periodStart, today]);
   const [selectedDate, setSelectedDate] = useState(today);
   const [view, setView] = useState<'week' | 'notes'>('week');
-  const verse = getWeeklyVerse(mondayOfWeek(today));
+  const verse = getWeeklyVerse(mondayOfWeek(periodStart));
   const sync = syncLabels[data.syncState];
   const addTaskRef = useRef(data.addTask);
   addTaskRef.current = data.addTask;
@@ -39,6 +41,17 @@ export default function App() {
     useSensor(TouchSensor, { activationConstraint: { delay: 260, tolerance: 7 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  function changePeriod(direction: -1 | 1) {
+    const next = shiftSevenDayWindow(periodStart, today, direction);
+    setPeriodStart(next);
+    setSelectedDate(next);
+  }
+
+  function returnToToday() {
+    setPeriodStart(today);
+    setSelectedDate(today);
+  }
 
   const visibleTasks = useMemo(() => data.tasks.reduce<Record<string, Task[]>>((groups, task) => {
     groups[task.scheduledDate] = [...(groups[task.scheduledDate] ?? []), task].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -95,7 +108,7 @@ export default function App() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><Check size={17} strokeWidth={2.4} /></span><span className="brand-name">Sept Jours</span></div>
-        <div className="topbar-date"><span className="eyebrow">Ma semaine</span><strong>{formatWeekRange(days)}</strong></div>
+        <WeekNavigation days={days} isCurrent={periodStart === today} className="topbar-date" onPrevious={() => changePeriod(-1)} onNext={() => changePeriod(1)} onToday={returnToToday} />
         <div className="topbar-actions">
           <span className={`sync-state sync-${data.syncState}`} title={data.error ?? undefined}><SyncIcon size={14} /> {sync.text}</span>
           <Button variant="outline" className="notes-button" onClick={() => setView(view === 'week' ? 'notes' : 'week')}><BookOpenText /> {view === 'week' ? 'Past Notes' : 'Ma semaine'}</Button>
@@ -108,10 +121,11 @@ export default function App() {
       {view === 'notes' ? <PastNotes notes={data.notes} today={today} onBack={() => setView('week')} onChange={data.changeNote} onDelete={(id) => void data.removeNote(id)} /> : <>
         <EventCountdown today={today} events={data.events.filter((event) => event.date >= today).slice(0, 3)} onAdd={(name, date) => void data.addEvent(name, date)} onDelete={(id) => void data.removeEvent(id)} />
         <section className="intro-row"><blockquote><p>« {verse.text} »</p><a href={verse.href} target="_blank" rel="noreferrer">{verse.reference}</a></blockquote></section>
+        <WeekNavigation days={days} isCurrent={periodStart === today} className="mobile-period-navigation" onPrevious={() => changePeriod(-1)} onNext={() => changePeriod(1)} onToday={returnToToday} />
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
           <nav className="mobile-day-picker" aria-label="Choisir un jour">{days.map((day) => <DayTab key={day.date} day={day} selected={selectedDate === day.date} onSelect={() => setSelectedDate(day.date)} />)}</nav>
-          <section className="week-board" aria-label="Tâches des sept prochains jours">
-            {days.map((day) => <DayColumn key={day.date} day={day} tasks={visibleTasks[day.date] ?? []} appointments={visibleAppointments[day.date] ?? []} note={data.notes.find((note) => note.date === day.date)?.text ?? ''} selected={day.date === selectedDate} onSelect={() => setSelectedDate(day.date)} onToggle={(id) => void data.toggleTask(id)} onPriorityChange={(id, priority) => void data.updateTask(id, { priority })} onRename={(id, title) => void data.updateTask(id, { title })} onDelete={(id) => { const task = data.tasks.find((item) => item.id === id); if (task) confirmDelete(task); }} onMoveTomorrow={(id) => { const task = data.tasks.find((item) => item.id === id); if (task) void data.updateTask(id, { scheduledDate: addCalendarDays(task.scheduledDate, 1) }); }} onAdd={(date, title, priority) => void data.addTask(date, title, priority)} onAppointmentAdd={(date, time, description) => void data.addAppointment(date, time, description)} onAppointmentToggle={(id) => void data.toggleAppointment(id)} onAppointmentDelete={(id) => void data.removeAppointment(id)} onNoteChange={(text) => data.changeNote(day.date, text)} />)}
+          <section className="week-board" aria-label="Planning sur sept jours">
+            {days.map((day) => <DayColumn key={day.date} day={day} tasks={visibleTasks[day.date] ?? []} appointments={visibleAppointments[day.date] ?? []} note={data.notes.find((note) => note.date === day.date)?.text ?? ''} selected={day.date === selectedDate} onSelect={() => setSelectedDate(day.date)} onToggle={(id) => void data.toggleTask(id)} onPriorityChange={(id, priority) => void data.updateTask(id, { priority })} onRename={(id, title) => void data.updateTask(id, { title })} onDelete={(id) => { const task = data.tasks.find((item) => item.id === id); if (task) confirmDelete(task); }} onMoveTomorrow={(id) => { const task = data.tasks.find((item) => item.id === id); if (task) void data.updateTask(id, { scheduledDate: addCalendarDays(task.scheduledDate, 1) }); }} onAdd={(date, title, priority) => void data.addTask(date, title, priority)} onAppointmentAdd={(date, time, description) => void data.addAppointment(date, time, description)} onAppointmentUpdate={(id, time, description) => void data.updateAppointment(id, time, description)} onAppointmentToggle={(id) => void data.toggleAppointment(id)} onAppointmentDelete={(id) => void data.removeAppointment(id)} onNoteChange={(text) => data.changeNote(day.date, text)} />)}
           </section>
         </DndContext>
       </>}
