@@ -7,6 +7,7 @@ Le coût normal de cette architecture est de **0 €** : le site statique est pu
 ## Ce qui est inclus
 
 - fenêtre glissante de sept jours ;
+- navigation par périodes de sept jours vers le passé, avec retour direct à aujourd’hui ;
 - tâches indépendantes identifiées par UUID, y compris lorsque leurs textes sont identiques ;
 - priorités rouge, jaune et verte ;
 - ajout, modification, suppression, report au lendemain et réorganisation par glisser-déposer ;
@@ -15,7 +16,7 @@ Le coût normal de cette architecture est de **0 €** : le site statique est pu
 - une note synchronisée par jour, sans suppression automatique ;
 - vue **Past Notes** avec recherche, modification et suppression ;
 - jusqu’à trois compteurs d’événements futurs ;
-- jusqu’à trois rendez-vous par jour, avec heure, description et état terminé ;
+- jusqu’à trois rendez-vous par jour, avec heure, description, modification et état terminé ;
 - extrait biblique hebdomadaire issu de la traduction AELF ;
 - authentification Supabase et Row Level Security ;
 - synchronisation rapide entre appareils grâce à Supabase Realtime ;

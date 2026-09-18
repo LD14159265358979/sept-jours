@@ -29,9 +29,9 @@ export function differenceInCalendarDays(from: string, to: string) {
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / DAY_MS);
 }
 
-export function getSevenDayWindow(today = localDateKey()): Day[] {
+export function getSevenDayWindow(start = localDateKey(), today = localDateKey()): Day[] {
   return Array.from({ length: 7 }, (_, index) => {
-    const dateKey = addCalendarDays(today, index);
+    const dateKey = addCalendarDays(start, index);
     const date = parseCalendarDate(dateKey);
     return {
       date: dateKey,
@@ -39,9 +39,14 @@ export function getSevenDayWindow(today = localDateKey()): Day[] {
       shortLabel: new Intl.DateTimeFormat('fr-FR', { weekday: 'narrow' }).format(date).toUpperCase(),
       dayNumber: String(date.getDate()),
       month: new Intl.DateTimeFormat('fr-FR', { month: 'short' }).format(date).replace('.', '') + '.',
-      isToday: index === 0,
+      isToday: dateKey === today,
     };
   });
+}
+
+export function shiftSevenDayWindow(start: string, today: string, direction: -1 | 1) {
+  const shifted = addCalendarDays(start, direction * 7);
+  return direction === 1 && shifted > today ? today : shifted;
 }
 
 export function formatWeekRange(days: Day[]) {
