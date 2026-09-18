@@ -17,6 +17,7 @@ Le coût normal de cette architecture est de **0 €** : le site statique est pu
 - vue **Past Notes** avec recherche, modification et suppression ;
 - jusqu’à trois compteurs d’événements futurs ;
 - jusqu’à trois rendez-vous par jour, avec heure, description, modification et état terminé ;
+- calendrier mensuel séparé avec rendez-vous ponctuels ou hebdomadaires, exceptions par date et rappels visibles dans **Ma semaine** ;
 - extrait biblique hebdomadaire issu de la traduction AELF ;
 - authentification Supabase et Row Level Security ;
 - synchronisation rapide entre appareils grâce à Supabase Realtime ;
@@ -53,6 +54,7 @@ Le repository GitHub peut être public : il contient le code de l’interface, m
 3. Ouvrez le fichier [`supabase/migrations/20260907000000_initial_schema.sql`](supabase/migrations/20260907000000_initial_schema.sql) de ce projet.
 4. Copiez tout son contenu dans l’éditeur SQL puis cliquez sur **Run** une seule fois.
 5. Ouvrez ensuite [`supabase/migrations/20260908000000_daily_appointments.sql`](supabase/migrations/20260908000000_daily_appointments.sql), copiez son contenu et cliquez à nouveau sur **Run**.
+6. Enfin, exécutez [`supabase/migrations/202609180001_calendar_events.sql`](supabase/migrations/202609180001_calendar_events.sql) pour activer le calendrier, les répétitions et leurs exceptions.
 
 Ce script crée :
 
@@ -60,6 +62,7 @@ Ce script crée :
 - `daily_notes` pour les notes ;
 - `upcoming_events` pour les compteurs ;
 - `daily_appointments` pour les rendez-vous, limités à trois par journée ;
+- `calendar_events` pour le calendrier, les rendez-vous hebdomadaires, les dates retirées et les rappels ;
 - les contraintes et index ;
 - les règles Row Level Security ;
 - la diffusion Realtime ;

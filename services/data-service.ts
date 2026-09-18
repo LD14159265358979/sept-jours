@@ -1,32 +1,37 @@
 import { requireSupabase } from '@/lib/supabase';
 import { localDateKey } from '@/lib/date-utils';
-import type { Appointment, DailyNote, Priority, Task, UpcomingEvent } from '@/lib/types';
+import type { Appointment, CalendarEvent, CalendarRecurrence, DailyNote, Priority, Task, UpcomingEvent } from '@/lib/types';
 
 type TaskRow = { id: string; user_id: string; title: string; scheduled_date: string; priority: Priority; is_completed: boolean; completed_at: string | null; sort_order: number; created_at: string; updated_at: string };
 type NoteRow = { id: string; user_id: string; date: string; text: string; created_at: string; updated_at: string };
 type EventRow = { id: string; user_id: string; name: string; event_date: string; created_at: string; updated_at: string };
 type AppointmentRow = { id: string; user_id: string; date: string; appointment_time: string; description: string; is_completed: boolean; completed_at: string | null; created_at: string; updated_at: string };
+type CalendarEventRow = { id: string; user_id: string; title: string; start_date: string; event_time: string; recurrence: CalendarRecurrence; recurrence_end_date: string | null; reminder_text: string | null; excluded_dates: string[]; created_at: string; updated_at: string };
 
 const mapTask = (row: TaskRow): Task => ({ id: row.id, userId: row.user_id, title: row.title, scheduledDate: row.scheduled_date, priority: row.priority, isCompleted: row.is_completed, completedAt: row.completed_at, sortOrder: row.sort_order, createdAt: row.created_at, updatedAt: row.updated_at });
 const mapNote = (row: NoteRow): DailyNote => ({ id: row.id, userId: row.user_id, date: row.date, text: row.text, createdAt: row.created_at, updatedAt: row.updated_at });
 const mapEvent = (row: EventRow): UpcomingEvent => ({ id: row.id, userId: row.user_id, name: row.name, date: row.event_date, createdAt: row.created_at, updatedAt: row.updated_at });
 const mapAppointment = (row: AppointmentRow): Appointment => ({ id: row.id, userId: row.user_id, date: row.date, time: row.appointment_time.slice(0, 5), description: row.description, isCompleted: row.is_completed, completedAt: row.completed_at, createdAt: row.created_at, updatedAt: row.updated_at });
+const mapCalendarEvent = (row: CalendarEventRow): CalendarEvent => ({ id: row.id, userId: row.user_id, title: row.title, startDate: row.start_date, time: row.event_time.slice(0, 5), recurrence: row.recurrence, recurrenceEndDate: row.recurrence_end_date, reminderText: row.reminder_text, excludedDates: row.excluded_dates ?? [], createdAt: row.created_at, updatedAt: row.updated_at });
 
 export async function fetchUserData(userId: string) {
   const client = requireSupabase();
-  const [tasksResult, notesResult, eventsResult, appointmentsResult] = await Promise.all([
+  const [tasksResult, notesResult, eventsResult, appointmentsResult, calendarEventsResult] = await Promise.all([
     client.from('tasks').select('*').eq('user_id', userId).order('scheduled_date').order('sort_order'),
     client.from('daily_notes').select('*').eq('user_id', userId).order('date', { ascending: false }),
     client.from('upcoming_events').select('*').eq('user_id', userId).gte('event_date', localDateKey()).order('event_date'),
     client.from('daily_appointments').select('*').eq('user_id', userId).order('date').order('appointment_time'),
+    client.from('calendar_events').select('*').eq('user_id', userId).order('start_date').order('event_time'),
   ]);
-  const error = tasksResult.error ?? notesResult.error ?? eventsResult.error ?? appointmentsResult.error;
+  const calendarTableMissing = calendarEventsResult.error?.code === '42P01' || calendarEventsResult.error?.code === 'PGRST205';
+  const error = tasksResult.error ?? notesResult.error ?? eventsResult.error ?? appointmentsResult.error ?? (calendarTableMissing ? null : calendarEventsResult.error);
   if (error) throw error;
   return {
     tasks: (tasksResult.data as TaskRow[]).map(mapTask),
     notes: (notesResult.data as NoteRow[]).map(mapNote),
     events: (eventsResult.data as EventRow[]).map(mapEvent),
     appointments: (appointmentsResult.data as AppointmentRow[]).map(mapAppointment),
+    calendarEvents: calendarTableMissing ? [] : (calendarEventsResult.data as CalendarEventRow[]).map(mapCalendarEvent),
   };
 }
 
@@ -97,10 +102,43 @@ export async function deleteAppointment(id: string, userId: string) {
   if (error) throw error;
 }
 
+export async function insertCalendarEvent(event: CalendarEvent, userId: string) {
+  const { error } = await requireSupabase().from('calendar_events').insert({
+    id: event.id,
+    user_id: userId,
+    title: event.title,
+    start_date: event.startDate,
+    event_time: event.time,
+    recurrence: event.recurrence,
+    recurrence_end_date: event.recurrenceEndDate,
+    reminder_text: event.reminderText,
+    excluded_dates: event.excludedDates,
+  });
+  if (error) throw error;
+}
+
+export async function updateCalendarEvent(id: string, userId: string, patch: Partial<CalendarEvent>) {
+  const payload: Record<string, unknown> = {};
+  if (patch.title !== undefined) payload.title = patch.title;
+  if (patch.startDate !== undefined) payload.start_date = patch.startDate;
+  if (patch.time !== undefined) payload.event_time = patch.time;
+  if (patch.recurrence !== undefined) payload.recurrence = patch.recurrence;
+  if (patch.recurrenceEndDate !== undefined) payload.recurrence_end_date = patch.recurrenceEndDate;
+  if (patch.reminderText !== undefined) payload.reminder_text = patch.reminderText;
+  if (patch.excludedDates !== undefined) payload.excluded_dates = patch.excludedDates;
+  const { error } = await requireSupabase().from('calendar_events').update(payload).eq('id', id).eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function deleteCalendarEvent(id: string, userId: string) {
+  const { error } = await requireSupabase().from('calendar_events').delete().eq('id', id).eq('user_id', userId);
+  if (error) throw error;
+}
+
 export function subscribeToUserData(userId: string, onChange: () => void) {
   const client = requireSupabase();
   const channel = client.channel(`sept-jours-${userId}`);
-  for (const table of ['tasks', 'daily_notes', 'upcoming_events', 'daily_appointments']) {
+  for (const table of ['tasks', 'daily_notes', 'upcoming_events', 'daily_appointments', 'calendar_events']) {
     channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }, onChange);
   }
   channel.subscribe();

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpenText, Check, Cloud, CloudOff, LoaderCircle, LogOut, TriangleAlert } from 'lucide-react';
+import { BookOpenText, CalendarDays, Check, Cloud, CloudOff, ListTodo, LoaderCircle, LogOut, TriangleAlert } from 'lucide-react';
 import { closestCorners, DndContext, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { AuthScreen } from '@/components/auth-screen';
@@ -15,6 +15,8 @@ import { getWeeklyVerse } from '@/lib/weekly-verses';
 import { useAppData } from '@/hooks/use-app-data';
 import { useSession } from '@/hooks/use-session';
 import { WeekNavigation } from '@/components/week-navigation';
+import { CalendarView } from '@/components/calendar-view';
+import { remindersForDate } from '@/lib/calendar-events';
 
 const syncLabels = {
   synced: { text: 'Synchronisé', icon: Cloud },
@@ -30,7 +32,7 @@ export default function App() {
   const [periodStart, setPeriodStart] = useState(today);
   const days = useMemo(() => getSevenDayWindow(periodStart, today), [periodStart, today]);
   const [selectedDate, setSelectedDate] = useState(today);
-  const [view, setView] = useState<'week' | 'notes'>('week');
+  const [view, setView] = useState<'week' | 'notes' | 'calendar'>('week');
   const verse = getWeeklyVerse(mondayOfWeek(periodStart));
   const sync = syncLabels[data.syncState];
   const addTaskRef = useRef(data.addTask);
@@ -111,21 +113,22 @@ export default function App() {
         <WeekNavigation days={days} isCurrent={periodStart === today} className="topbar-date" onPrevious={() => changePeriod(-1)} onNext={() => changePeriod(1)} onToday={returnToToday} />
         <div className="topbar-actions">
           <span className={`sync-state sync-${data.syncState}`} title={data.error ?? undefined}><SyncIcon size={14} /> {sync.text}</span>
-          <Button variant="outline" className="notes-button" onClick={() => setView(view === 'week' ? 'notes' : 'week')}><BookOpenText /> {view === 'week' ? 'Past Notes' : 'Ma semaine'}</Button>
+          <Button variant="outline" className="view-button calendar-button" onClick={() => setView(view === 'calendar' ? 'week' : 'calendar')}>{view === 'calendar' ? <ListTodo /> : <CalendarDays />} {view === 'calendar' ? 'Ma semaine' : 'Calendrier'}</Button>
+          <Button variant="outline" className="view-button notes-button" onClick={() => setView(view === 'notes' ? 'week' : 'notes')}>{view === 'notes' ? <ListTodo /> : <BookOpenText />} {view === 'notes' ? 'Ma semaine' : 'Past Notes'}</Button>
           {session && <Button variant="ghost" size="icon" aria-label="Se déconnecter" title="Se déconnecter" onClick={() => void supabase?.auth.signOut()}><LogOut /></Button>}
         </div>
       </header>
 
       {!isSupabaseConfigured && <div className="demo-banner">Mode démonstration — configurez Supabase pour activer la synchronisation privée.</div>}
 
-      {view === 'notes' ? <PastNotes notes={data.notes} today={today} onBack={() => setView('week')} onChange={data.changeNote} onDelete={(id) => void data.removeNote(id)} /> : <>
+      {view === 'notes' ? <PastNotes notes={data.notes} today={today} onBack={() => setView('week')} onChange={data.changeNote} onDelete={(id) => void data.removeNote(id)} /> : view === 'calendar' ? <CalendarView today={today} events={data.calendarEvents} onBack={() => setView('week')} onAdd={(event) => void data.addCalendarEvent(event)} onSkipOccurrence={(id, date) => void data.skipCalendarOccurrence(id, date)} onDelete={(id) => void data.removeCalendarEvent(id)} /> : <>
         <EventCountdown today={today} events={data.events.filter((event) => event.date >= today).slice(0, 3)} onAdd={(name, date) => void data.addEvent(name, date)} onDelete={(id) => void data.removeEvent(id)} />
         <section className="intro-row"><blockquote><p>« {verse.text} »</p><a href={verse.href} target="_blank" rel="noreferrer">{verse.reference}</a></blockquote></section>
         <WeekNavigation days={days} isCurrent={periodStart === today} className="mobile-period-navigation" onPrevious={() => changePeriod(-1)} onNext={() => changePeriod(1)} onToday={returnToToday} />
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
           <nav className="mobile-day-picker" aria-label="Choisir un jour">{days.map((day) => <DayTab key={day.date} day={day} selected={selectedDate === day.date} onSelect={() => setSelectedDate(day.date)} />)}</nav>
           <section className="week-board" aria-label="Planning sur sept jours">
-            {days.map((day) => <DayColumn key={day.date} day={day} tasks={visibleTasks[day.date] ?? []} appointments={visibleAppointments[day.date] ?? []} note={data.notes.find((note) => note.date === day.date)?.text ?? ''} selected={day.date === selectedDate} onSelect={() => setSelectedDate(day.date)} onToggle={(id) => void data.toggleTask(id)} onPriorityChange={(id, priority) => void data.updateTask(id, { priority })} onRename={(id, title) => void data.updateTask(id, { title })} onDelete={(id) => { const task = data.tasks.find((item) => item.id === id); if (task) confirmDelete(task); }} onMoveTomorrow={(id) => { const task = data.tasks.find((item) => item.id === id); if (task) void data.updateTask(id, { scheduledDate: addCalendarDays(task.scheduledDate, 1) }); }} onAdd={(date, title, priority) => void data.addTask(date, title, priority)} onAppointmentAdd={(date, time, description) => void data.addAppointment(date, time, description)} onAppointmentUpdate={(id, time, description) => void data.updateAppointment(id, time, description)} onAppointmentToggle={(id) => void data.toggleAppointment(id)} onAppointmentDelete={(id) => void data.removeAppointment(id)} onNoteChange={(text) => data.changeNote(day.date, text)} />)}
+            {days.map((day) => <DayColumn key={day.date} day={day} tasks={visibleTasks[day.date] ?? []} appointments={visibleAppointments[day.date] ?? []} reminders={remindersForDate(data.calendarEvents, day.date)} note={data.notes.find((note) => note.date === day.date)?.text ?? ''} selected={day.date === selectedDate} onSelect={() => setSelectedDate(day.date)} onToggle={(id) => void data.toggleTask(id)} onPriorityChange={(id, priority) => void data.updateTask(id, { priority })} onRename={(id, title) => void data.updateTask(id, { title })} onDelete={(id) => { const task = data.tasks.find((item) => item.id === id); if (task) confirmDelete(task); }} onMoveTomorrow={(id) => { const task = data.tasks.find((item) => item.id === id); if (task) void data.updateTask(id, { scheduledDate: addCalendarDays(task.scheduledDate, 1) }); }} onAdd={(date, title, priority) => void data.addTask(date, title, priority)} onAppointmentAdd={(date, time, description) => void data.addAppointment(date, time, description)} onAppointmentUpdate={(id, time, description) => void data.updateAppointment(id, time, description)} onAppointmentToggle={(id) => void data.toggleAppointment(id)} onAppointmentDelete={(id) => void data.removeAppointment(id)} onNoteChange={(text) => data.changeNote(day.date, text)} />)}
           </section>
         </DndContext>
       </>}

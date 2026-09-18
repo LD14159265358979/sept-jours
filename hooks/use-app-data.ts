@@ -4,11 +4,11 @@ import { canAddAppointment } from '@/lib/appointments';
 import { expiredTaskIds } from '@/lib/date-utils';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { appointmentWithChanges, taskWithTitle } from '@/lib/record-updates';
-import type { Appointment, DailyNote, Priority, Task, UpcomingEvent } from '@/lib/types';
-import { deleteAppointment, deleteEvent, deleteNote, deleteTasks, fetchUserData, insertAppointment, insertEvent, insertTask, subscribeToUserData, updateAppointment as persistAppointment, updateTask as persistTask, updateTaskPositions, upsertNote } from '@/services/data-service';
+import type { Appointment, CalendarEvent, DailyNote, Priority, Task, UpcomingEvent } from '@/lib/types';
+import { deleteAppointment, deleteCalendarEvent, deleteEvent, deleteNote, deleteTasks, fetchUserData, insertAppointment, insertCalendarEvent, insertEvent, insertTask, subscribeToUserData, updateAppointment as persistAppointment, updateCalendarEvent as persistCalendarEvent, updateTask as persistTask, updateTaskPositions, upsertNote } from '@/services/data-service';
 
 type SyncState = 'synced' | 'syncing' | 'offline' | 'error';
-type Cache = { tasks: Task[]; notes: DailyNote[]; events: UpcomingEvent[]; appointments: Appointment[] };
+type Cache = { tasks: Task[]; notes: DailyNote[]; events: UpcomingEvent[]; appointments: Appointment[]; calendarEvents: CalendarEvent[] };
 
 const demoNotes: DailyNote[] = [
   { id: 'note-today', date: '2026-09-07', text: 'Penser à appeler Camille pour confirmer le déjeuner de jeudi.', createdAt: '2026-09-07T08:00:00Z', updatedAt: '2026-09-07T08:00:00Z' },
@@ -26,6 +26,10 @@ const demoAppointments: Appointment[] = [
   { id: 'appointment-camille', date: '2026-09-10', time: '12:30', description: 'Déjeuner avec Camille', isCompleted: false, completedAt: null, createdAt: '2026-09-07T08:00:00Z', updatedAt: '2026-09-07T08:00:00Z' },
 ];
 
+const demoCalendarEvents: CalendarEvent[] = [
+  { id: 'calendar-baby-swimming', title: 'Bébés nageurs', startDate: '2026-09-17', time: '18:00', recurrence: 'weekly', recurrenceEndDate: null, reminderText: 'Préparer le sac de piscine', excludedDates: ['2026-10-29'], createdAt: '2026-09-07T08:00:00Z', updatedAt: '2026-09-07T08:00:00Z' },
+];
+
 function cacheKey(userId: string) { return `sept-jours-cache:${userId}`; }
 function messageFrom(error: unknown) { return error instanceof Error ? error.message : 'La synchronisation a échoué.'; }
 function normalizedPositions(tasks: Task[]) {
@@ -40,6 +44,7 @@ export function useAppData(userId?: string) {
   const [notes, setNotes] = useState<DailyNote[]>(demo ? demoNotes : []);
   const [events, setEvents] = useState<UpcomingEvent[]>(demo ? demoEvents : []);
   const [appointments, setAppointments] = useState<Appointment[]>(demo ? demoAppointments : []);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(demo ? demoCalendarEvents : []);
   const [loading, setLoading] = useState(!demo);
   const [syncState, setSyncState] = useState<SyncState>(navigator.onLine ? 'synced' : 'offline');
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +63,7 @@ export function useAppData(userId?: string) {
       const expired = expiredTaskIds(data.tasks);
       if (expired.length) await deleteTasks(expired, userId);
       const cleanData = { ...data, tasks: data.tasks.filter((task) => !expired.includes(task.id)) };
-      setTasks(cleanData.tasks); setNotes(cleanData.notes); setEvents(cleanData.events); setAppointments(cleanData.appointments);
+      setTasks(cleanData.tasks); setNotes(cleanData.notes); setEvents(cleanData.events); setAppointments(cleanData.appointments); setCalendarEvents(cleanData.calendarEvents);
       saveCache(cleanData); setError(null); setSyncState('synced');
     } catch (loadError) {
       setError(messageFrom(loadError)); setSyncState(navigator.onLine ? 'error' : 'offline');
@@ -69,7 +74,7 @@ export function useAppData(userId?: string) {
     if (demo || !userId) return;
     try {
       const cached = localStorage.getItem(cacheKey(userId));
-      if (cached) { const data = JSON.parse(cached) as Cache; setTasks(data.tasks ?? []); setNotes(data.notes ?? []); setEvents(data.events ?? []); setAppointments(data.appointments ?? []); }
+      if (cached) { const data = JSON.parse(cached) as Cache; setTasks(data.tasks ?? []); setNotes(data.notes ?? []); setEvents(data.events ?? []); setAppointments(data.appointments ?? []); setCalendarEvents(data.calendarEvents ?? []); }
     } catch { /* ignore invalid cache */ }
     void reload();
     const unsubscribe = subscribeToUserData(userId, () => { void reload(); });
@@ -174,5 +179,28 @@ export function useAppData(userId?: string) {
     await runRemote(() => deleteAppointment(id, userId!), () => setAppointments(before));
   }
 
-  return { tasks, notes, events, appointments, loading, syncState, error, reload, addTask, updateTask, toggleTask, removeTask, reorderTasks, changeNote, removeNote, addEvent, removeEvent, addAppointment, updateAppointment, toggleAppointment, removeAppointment };
+  async function addCalendarEvent(input: Pick<CalendarEvent, 'title' | 'startDate' | 'time' | 'recurrence' | 'recurrenceEndDate' | 'reminderText'>) {
+    const now = new Date().toISOString();
+    const calendarEvent: CalendarEvent = { id: crypto.randomUUID(), ...input, excludedDates: [], createdAt: now, updatedAt: now };
+    const before = calendarEvents;
+    setCalendarEvents((current) => [...current, calendarEvent]);
+    await runRemote(() => insertCalendarEvent(calendarEvent, userId!), () => setCalendarEvents(before));
+  }
+
+  async function skipCalendarOccurrence(id: string, date: string) {
+    const event = calendarEvents.find((item) => item.id === id);
+    if (!event || event.excludedDates.includes(date)) return;
+    const before = calendarEvents;
+    const excludedDates = [...event.excludedDates, date].sort();
+    setCalendarEvents((current) => current.map((item) => item.id === id ? { ...item, excludedDates, updatedAt: new Date().toISOString() } : item));
+    await runRemote(() => persistCalendarEvent(id, userId!, { excludedDates }), () => setCalendarEvents(before));
+  }
+
+  async function removeCalendarEvent(id: string) {
+    const before = calendarEvents;
+    setCalendarEvents((current) => current.filter((event) => event.id !== id));
+    await runRemote(() => deleteCalendarEvent(id, userId!), () => setCalendarEvents(before));
+  }
+
+  return { tasks, notes, events, appointments, calendarEvents, loading, syncState, error, reload, addTask, updateTask, toggleTask, removeTask, reorderTasks, changeNote, removeNote, addEvent, removeEvent, addAppointment, updateAppointment, toggleAppointment, removeAppointment, addCalendarEvent, skipCalendarOccurrence, removeCalendarEvent };
 }
